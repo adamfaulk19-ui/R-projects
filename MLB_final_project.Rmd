@@ -1,0 +1,227 @@
+---
+output:
+  pdf_document: default
+  html_document: default
+---
+
+---
+title: "Project Dataset DSA 201 Adam Faulk"
+author: "Adam Faulk"
+date: "2026-03-12"
+output: pdf_document
+---
+
+```{r, message=FALSE, warning=FALSE}
+# install.packages("baseballr")
+library(baseballr)
+library(dplyr)
+# install.packages("tidyverse")
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(janitor)
+library(knitr)
+```
+
+```{r, message=FALSE, warning=FALSE}
+data <- bref_daily_batter("2023-03-30", "2023-10-01") 
+data %>%
+  dplyr::glimpse()
+dim(data)
+
+## Sort by batting average to see who batted the highest
+highest_ba <- subset(data, G >= 81)
+highest_ba <- highest_ba[order(-highest_ba$BA), ]
+```
+
+This is just a little bit of EDA to understand the data before I go into more detail with my code. For some background on what my final project is hoping to accomplish. I am working with the Baltimore Orioles in the 2023 season to see what players the Orioles should target at the deadline. In 2023 the Orioles were surging, and had a good chance of making the playoffs at the deadline. This meant that they were buyers at the deadline, looking for some players they could bring in to fill in the gaps for the team. My goal is to indentify the gaps and then identify potential players that could fill these gaps.
+
+```{r}
+# Get the data about stats before the trade deadline and then look at just the orioles. 
+deadlinestats <- bref_daily_batter("2023-03-30", "2023-08-01")
+orioles <- deadlinestats %>% filter(Team == "Baltimore")
+```
+
+Now that we have data for just the orioles, let's look at all of their players compared to the league average OPS. With a quick google search, I found that at the trade deadline in 2023, the league average OPS was .731. I will add a red line in my graph to represent this.
+
+```{r, message=FALSE, warning=FALSE}
+  # Create the scatter plot
+ggplot(orioles, aes(x = reorder(Name, OPS), y = OPS)) +
+  # Add a red line to represent league average OPS
+  geom_hline(yintercept = 0.731, color = "red", linetype = "solid", linewidth = 1) +
+  # Add the points (Orioles orange)
+  geom_point(size = 4, color = "darkorange") +
+  # Customizing the axes
+  labs(
+    title = "2023 Orioles: OPS by Player",
+    subtitle = "Red line represents 2023 league average OPS",
+    x = "Player Name",
+    y = "On-Base Plus Slugging (OPS)"
+  ) +
+  # Set a logical limit for the Y axis
+  scale_y_continuous(limits = c(0, 1.2), breaks = seq(0, 1.2, by = 0.1)) +
+  theme_minimal() +
+  # Rotate the x-axis labels so they are readable
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1)
+  )
+```
+
+With this graph, we can look at what the orioles did good and where they need to improve. Unfortunately my dataset does not include whether the batters are left or right handed batters, so I will do some research online and then create a left handed orioles dataset and a right handed orioles dataset. Switch hitters will be included in their own dataset to remove any bias.
+
+```{r, message=FALSE, warning=FALSE}
+righthandedorioles <- orioles %>% filter(Name %in% c("Austin Hays", "Ryan Mountcastle", "Jorge Mateo", "Ramón Urías", "James McCann", "Ryan McKenna", "Jordan Westburg", "Joey Ortiz"))
+
+lefthandedorioles <- orioles %>% filter(Name %in% c("Gunnar Henderson", "Cedric Mullins", "Adam Frazier", "Ryan O'Hearn", "Colton Cowser", "Terrin Vavra", "Kyle Stowers", "Josh Lester", "Anthony Bemboom"))
+
+switchorioles <- orioles %>% filter(Name %in% c("Adley Rutschman", "Anthony Santander"))
+
+lefty_total_ops <- lefthandedorioles %>%
+  ungroup() %>% 
+  summarise(
+    group_obp = sum(H + BB + HBP) / sum(AB + BB + HBP + SF),
+    group_slg = sum(H + X2B + 2 * X3B + 3 * HR) / sum(AB),
+    group_ops = group_obp + group_slg
+  )
+righty_total_ops <- righthandedorioles %>%
+  ungroup() %>% 
+  summarise(
+    group_obp = sum(H + BB + HBP) / sum(AB + BB + HBP + SF),
+    group_slg = sum(H + X2B + 2 * X3B + 3 * HR) / sum(AB),
+    group_ops = group_obp + group_slg
+  )
+
+switch_total_ops <- switchorioles %>%
+  ungroup() %>% 
+  summarise(
+    group_obp = sum(H + BB + HBP) / sum(AB + BB + HBP + SF),
+    group_slg = sum(H + X2B + 2 * X3B + 3 * HR) / sum(AB),
+    group_ops = group_obp + group_slg
+  )
+```
+
+We now have the orioles into three different groups, and this allows us to now view the stats of each type of hitter. This is important because in a world of matchups, knowing if you need to improve against left handed pitching or right handed pitching is crucial. Left handed batters are going to be better against right handed pitchers, and right handed batters are going to be better against left handed pitching. Let's go into more detail with code
+
+```{r}
+#OPS for all left handed batters on the orioles
+lefty_total_ops <- lefthandedorioles %>%
+  ungroup() %>% 
+  summarise(
+    group_obp = sum(H + BB + HBP) / sum(AB + BB + HBP + SF),
+    group_slg = sum(H + X2B + 2 * X3B + 3 * HR) / sum(AB),
+    group_ops = group_obp + group_slg
+  )
+#OPS for all right handed batters on the Orioles
+righty_total_ops <- righthandedorioles %>%
+  ungroup() %>% 
+  summarise(
+    group_obp = sum(H + BB + HBP) / sum(AB + BB + HBP + SF),
+    group_slg = sum(H + X2B + 2 * X3B + 3 * HR) / sum(AB),
+    group_ops = group_obp + group_slg
+  )
+#OPS for all switch hitters on the Orioles
+switch_total_ops <- switchorioles %>%
+  ungroup() %>% 
+  summarise(
+    group_obp = sum(H + BB + HBP) / sum(AB + BB + HBP + SF),
+    group_slg = sum(H + X2B + 2 * X3B + 3 * HR) / sum(AB),
+    group_ops = group_obp + group_slg
+  )
+#Adding into one dataset so it is easier to compare
+orioles_ops_comparison <- bind_rows(
+  lefty_total_ops %>% mutate(Batter_Side = "Left"), 
+  righty_total_ops %>% mutate(Batter_Side = "Right"), 
+  switch_total_ops %>% mutate(Batter_Side = "Switch")) %>% 
+  select(Batter_Side, everything())
+# 2. Convert to 'factors' to force a specific order on the X-axis (optional, but cleaner)
+orioles_ops_comparison$Batter_Side <- factor(orioles_ops_comparison$Batter_Side, 
+                                      levels = c("Left", "Switch", "Right"))
+
+# Creating a ggplot visualization to make the final graph cleaner. Originally used the function "Kable"  and I did not like how it turned out 
+
+ggplot(orioles_ops_comparison, aes(x = Batter_Side, y = group_ops, fill = Batter_Side)) +
+  geom_col(color = "black", show.legend = FALSE) + # geom_col makes the bars based on the values
+  geom_text(aes(label = round(group_ops, 3)), # Add numeric labels on top of the bars
+            vjust = -0.5, # Position labels slightly above the bar
+            size = 5, # Adjust label size
+            fontface = "bold") +
+  
+  # Styling and Titles
+  theme_minimal() + # Uses a clean white background
+  labs(title = "2023 Orioles Group OPS by Batter Handedness",
+       subtitle = "Weighted average based on Total Bases / Total At-Bats",
+       x = "Batter Side",
+       y = "Combined OPS (OBP + SLG)",
+       caption = "Data processed via baseballr package") +
+
+  # Adjust Y-Axis so there is room for the labels
+  expand_limits(y = c(0, max(orioles_ops_comparison$group_ops) + 0.05))
+
+
+```
+
+From these results we can see that right handed batters are the area that needs the most improvement on the orioles. From a quick google search, the average OPS from the 2023 season was .731, so .692 is well below that. We now know that we need to target right-handed batters that have an OPS above .731. We want to target players that are above .731 because we want above average players who can improve our chances to make the World Series. The code below will have \# to give more detail, but I will narrow down to some players that we should target
+
+```{r, message=FALSE, warning=FALSE}
+potential_targets <- deadlinestats %>% 
+  filter(OPS > 0.731)
+# This turned back 215 observations, with many players having played only a handful of games. Since this is not a good sample size, I am going to say that players have to have played at least 50 games to be considered
+potential_targets <- deadlinestats %>% 
+  filter(OPS > 0.731) %>% 
+  filter(G >= 50)
+# I now am going to run all of these player names through gemini to find who was on an expiring contract in 2023. Expiring contracts are the easiest to move because teams will not be tied up with a contract for years after. Many teams want a player who is on a hot streak that can help them down the stretch, but they don't want to pay a crazy amount for them, making expiring contracts desirable. 
+
+# 1. Define the list of players on expiring deals in 2023
+expiring_players <- c(
+  "Shohei Ohtani", "Matt Chapman", "Cody Bellinger", "J.D. Martinez", 
+  "Jorge Soler", "Andrew McCutchen", "Brandon Belt", "Justin Turner", 
+  "Tommy Pham", "Charlie Blackmon", "C.J. Cron", "Gary Sánchez", 
+  "Travis Jankowski", "Donovan Solano", "Randal Grichuk", "Adam Duvall",
+  "Eddie Rosario", "Kevin Kiermaier", "Joey Votto"
+)
+
+# 2. Filter data so only these names remain
+expiring_stats <- deadlinestats %>% 
+  filter(Name %in% expiring_players)
+
+# 3. View the new dataset
+view(expiring_stats)
+```
+
+We are now down to 19 potential targets. This is good but we are going to have to narrow it down a little more. Some of these teams are not going to want to sell at the deadline. Let's narrow it down to teams that are below .500 record wise.
+
+```{r}
+expiring_stats <- deadlinestats %>% 
+  filter(Name %in% expiring_players) %>% 
+  filter(Team %in% c("Colorado", "Pittsburgh", "New York"))
+view(expiring_stats)
+
+#Creating a ggplot visualization to show which players to showcase 
+library(ggplot2)
+
+# 1. Create a subset of just these three players
+expiring_stats <- deadlinestats %>%
+  filter(Name %in% c("Andrew McCutchen", "Tommy Pham", "Charlie Blackmon"))
+
+# 2. Build the plot
+ggplot(expiring_stats, aes(x = reorder(Name, -OPS), y = OPS, fill = Name)) +
+  geom_col(width = 0.6, show.legend = FALSE) + 
+  # Add the actual OPS values on top of the bars
+  geom_text(aes(label = sprintf("%.3f", OPS)), vjust = -0.5, fontface = "bold") +
+  # Customizing the look
+  labs(
+    title = "Target Acquisitions: OPS Comparison",
+    subtitle = "Expiring contracts on selling teams at the 2023 Deadline",
+    x = "Player",
+    y = "On-Base Plus Slugging (OPS)"
+  ) +
+  theme_minimal() +
+  # Setting the y-axis slightly higher than the max OPS for breathing room
+  scale_y_continuous(limits = c(0, 1.0))
+```
+
+We are now down to 3 players. Andrew McCutchen, Tommy Pham, and Charlie Blackmon. Players who had multiple teams listed were omitted because this meant that they had already been traded during the season, making a second trade unlikely. The conclusion from this is that as Tommy Pham and Andrew McCutchen are both right handed we should target both of them. We can also look at acquiring Charlie Blackmon, but since he is left handed this is less of a priority. This addresses our stakeholders need (The Baltimore Orioles) of improving the roster at the trade deadline so that we can make a playoff push.
+
+This raises some more questions like what are the other teams in the AL East's average OPS? Are they better left handed or right handed. What about our matchups towards the end of the season. If we are facing teams down the stretch that play more right handed pitchers then we should also target a lefty. This is just the tip of the iceberg, but this data also answers a very important question that we started with. We need to target a right handed batter to improve our team OPS from the right side of the plate. There are not many ethical questions to worry about here, if any. Since we are using statistics, this takes away the bias that people may have and gives a more objective approach. There could potentially be issues with me only looking at players who played at least 50 games, as injuries are out of players' control, but I felt this was fair to do as small sample sizes can skew the data.
+
+I chose to work with this dataset as I am a huge sports fan, and I would love to work in sports as my full time job. My dream is to work as a data analyst for a professional sports team, ideally the orioles.

@@ -1,0 +1,320 @@
+---
+title: "Final Project"
+author: "Adam Faulk"
+format: html
+editor: visual
+---
+
+# Introduction
+
+In the following report I will use data tidying and ggplot functions to show the relationship between wait times in the emergency room in every state in the United States and the condition in which patients arrive. I am hopeful to come to a conclusion on whether there are states that are better with response times as well as if some states are better at certain types of admissions and worse at others. Before every graph I will have a little bit of a description of what I am showcasing so that there is more clarity. At the end I will analyze what results I got and what they mean.
+
+# A Little About The Data
+
+This data set comes from the TidyTuesday data set "Timely and Effective Care by US State". This data comes from 2023 and 2024 and shows the average wait times for every US State as well as Washington DC and Puerto Rico. For this document, Puerto Rico will be excluded from the graphs, as my goal is to just highlight the United States and the wait times for all 50 states as well as Washington DC. The data also has percentages on vaccinations and how many people get care in an adequate amount of time when they are being admitted to the ER with symptoms of a stroke.
+
+# Loading Packages
+
+```{r}
+#| message: false
+#| warning: false
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(janitor)
+
+care_state <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2025/2025-04-08/care_state.csv')
+
+## Followed the instructions on the github tidytuesday link on how to download the data
+```
+
+Before I start trying to tidy the data I'm going to inspect and view all the NAs to get an idea of how best to tidy the data
+
+```{r}
+#| message: true
+view(care_state)
+head(care_state)
+tail(care_state)
+```
+
+There are quite a few NAs in the care_state.score column that have the number 5 in the care_state.footnote column. When I look at the footnotes on the github page it tells me that the number 5 correlates to "Results are not available for this reporting period." With this being known, I will remove all of the NAs that have 5 in the footnote column.
+
+```{r}
+care_state_clean <- care_state %>% filter(!(is.na(score) & footnote == 5))
+```
+
+Now that the data has no more NAs, I am ready to begin tidying the data to showcase the relationship between patients' care state and the average wait time.
+
+# Graph 1
+
+The first graph I am going to showcase is a broad visualization of the average scores of each state. It will show the average wait time of each state no matter what people are admitted for. This will be a benchmark before we go into more specified graphs.
+
+```{r}
+care_state_er <- care_state_clean %>%
+  filter(str_detect(measure_name, "Average")) %>%
+  filter(state != "PR") %>% 
+  select(state, measure_name, score)
+##Creating dataset with only time values for ER wait times
+## Removed Puerto Rico (PR) to only showcase states in the USA + DC
+
+ggplot(care_state_er, aes(x = state, y = score)) +
+  geom_violin(fill = "skyblue", 
+               outlier.shape = NA,
+               median_options = element_blank()) +    ## removing outliers to give a more accurate representation of wait times
+  labs (
+    title = "Average Emergency Room Wait Time For Each State (in mins)",
+    x = "State", 
+    y = "Time (in mins)"
+  ) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+  
+```
+
+From this graph, we can see that there is quite a bit of variation in average wait times across the United States. There are \## comments in the code above to clarify how I got to this graph, but to summarize I removed all of the rows that did not relate to average wait times (Percentage of people vaccinated, safe use of opioids, etc.) and only kept the rows referring to time. After seeing the variation in code, this led to me wanting to make a map of the United States with a color code relating to wait time to see if there is a region in the United States that is faster or slower than another region. That graph is shown below
+
+```{r}
+library(viridis)
+## Googled how to get a more vibrant graph and saw that this package has some nice colors for a graph
+
+care_state_er %>% 
+  filter(str_starts(measure_name, "Average")) %>% 
+  filter(state != "PR") %>% ##filtering out Puerto Rico
+  group_by(state) %>% 
+  summarise(avg_wait = mean(score, na.rm = TRUE), .groups = "drop") %>% 
+  mutate(region = tolower(state.name[match(state, state.abb)])) %>% ##making all of the abbreviations of the states the same so that the graph can be produced
+  right_join(map_data("state"), by = "region") %>%
+  ggplot(aes(long, lat, group = group, fill = avg_wait)) +
+  geom_polygon(color = "white", size = 0.3) +
+  coord_fixed(1.3) +
+  scale_fill_viridis_c(option = "plasma", name = "Average ER Wait Time (mins)") + ##looked online at color palates to find the one that I felt looked best for the graph
+  labs(title = "Average ER Wait Time by State",
+       x = NULL, 
+       y = NULL) +
+  theme_minimal()
+
+```
+
+When we look at the graph above, it becomes clear that the Northeast struggles the most with ER wait times. The colors are warmer up there, with the only states that are orange and yellow all being in the Northeast. The Midwest has the lowest wait times, and then there is a mix of medium and low wait times in the South and West .
+
+# Graph 2
+
+The second graph I will showcase is the amount of healthcare professionals that are up to date with Covid 19 vaccinations. This doesn't necessarily correlate to emergency room visits and time spent in the emergency room, but if the results are similar then it can potentially be a reason for the longer and/or shorter wait times.
+
+```{r}
+care_state_vac <- care_state_clean %>% 
+  filter(str_detect(measure_name, "Percentage of healthcare")) %>%
+  filter(state != "PR") %>% 
+  select(state, measure_name, score)
+view(care_state_vac)
+```
+
+Now that there is a data set that has only the vaccination percentages I will put the data into a column chart to show the differences.
+
+```{r}
+ggplot(care_state_vac, aes(state, score)) +
+  geom_col(fill = "red")+
+  labs(title = "Percentage of Healthcare Workers up to Date on Covid Vaccines", 
+       x = "State", 
+       y = NULL) +
+  theme_bw()+
+   theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+   
+```
+
+The main takeaway from this graph is that there are a surprisingly low number of healthcare workers that are up to date on their covid vaccines. I would have expected a much higher number of people across the board to have vaccinations, and I don't think that it is a high indicator of higher or lower Emergency room wait times.
+
+# Graph 3
+
+Following this graph of covid vaccinations, I am now going to go back to the average wait times. I don't feel that the covid vaccinations had very much correlation to the average wait times, and the wait times are split up into types of visits as well, so I am going to dive deeper into that. For this next graph I'm going to highlight only wait times for mental health patients.
+
+```{r}
+onlymentalcare <- care_state_clean %>% 
+   filter(str_detect(measure_id, "OP_18c")) %>%
+   filter(state != "PR") %>% 
+   filter(!is.na(score)) %>% 
+   select(state, measure_id, score)
+view(onlymentalcare)
+# Only the rows that are relating to mental/psychotic visits to the ER
+
+ggplot(onlymentalcare, aes(x = state, y = score)) +
+  geom_boxplot(fill = "skyblue",
+               color = "gray40",
+               ) +
+  labs(
+    title = "Average Wait Time for Patients Seeing a Mental Health Provider",
+    x = "State",
+    y = "Wait Time (mins)")+
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )
+
+```
+
+These numbers are quite varied. More so than the average wait time for each state, which reads to me as some states do not have an adequate amount of mental healthcare doctors for the amount of people that need help. I want to highlight the difference in the average time each state takes for mental health visits to the total average of time for every emergency room visit. There is a graph below to show this difference.
+
+```{r}
+comparison_data <- bind_rows(
+  care_state_er %>% 
+    filter(state != "PR") #removing puerto rico
+  %>% 
+    mutate(type = "Overall ER Wait Time"),
+  onlymentalcare %>% 
+    filter(state != "PR") #removing puerto rico
+  %>% 
+    mutate(type = "Mental Health Provider Wait Time")
+  
+)
+
+comparison_data <- comparison_data %>% 
+  mutate(state = fct_reorder(state, score, .fun = median, .desc = FALSE)) %>% 
+mutate(region = case_when(
+    state %in% c("CT","ME","MA","NH","RI","VT","NJ","NY","PA") ~ "Northeast",
+    state %in% c("IL","IN","MI","OH","WI","IA","KS","MN","MO","NE","ND","SD") ~ "Midwest",
+    state %in% c("DE","FL","GA","MD","NC","SC","VA","DC","WV","AL","KY","MS","TN","AR","LA","OK","TX") ~ "South",
+    state %in% c("AZ","CO","ID","MT","NV","NM","UT","WY","AK","CA","HI","OR","WA") ~ "West"
+  )) %>%
+  mutate(region = factor(region, levels = c("Northeast","Midwest","South","West")))
+view(comparison_data)
+
+  
+```
+
+Before I do the graph I wanted to describe what is going on in this code above. Initially I did my faceted graph similar to the graphs before, but it was very jumbled and difficult to read. In order to make the data easier to read I split the data into four different regions. There are now states part of either "Northeast", "Midwest", "South", or "West". Although this makes the data more generalized, if we refer to the heat map from earlier, the regions were pretty similar in the states directly next to them, so I decided to just use four regions to make it easier to understand.
+
+```{r}
+ggplot(comparison_data, aes(x = region, y = score)) +
+  geom_boxplot(fill = "pink", 
+               outlier.shape = NA) +
+  facet_wrap(~ type, ncol = 1, scales = "free_x") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+  )+
+  labs(
+    title = "Average Mental Health ER Wait Time vs. Average ER Wait Time"
+  )
+```
+
+From this data we can see that the mental health average waiting time is higher than average ER wait times. For example, the Northeast has a median wait time of about 250 minutes for an average ER wait time, and while this is already very high compared to other states, their mental health ER patients have to wait an average of over 300 minutes!
+
+# Graph 4
+
+The final exploratory graph that I am going to create will show the amount of patients that are being admitted to the Emergency Room with signs of a stroke that are getting their brain scan results within 45 minutes of being admitted. Time is the most important thing when it comes to a brain injury, and diagnosing a potential stroke as quick as possible is vital to making sure that if it is indeed a stroke, then the patient has the best chance at recovery.
+
+```{r}
+brainstroke <- care_state_clean %>% 
+   filter(str_detect(measure_id, "OP_23")) %>%
+   filter(state != "PR") %>% 
+   filter(!is.na(score)) %>% 
+   select(state, measure_id, score)
+view(brainstroke)
+```
+
+Now that the data is cleaned up to show what I need, I will put it into a lollipop plot. Although there are other graphs I could use, such as a bar chart or a box plot, this is something different and will highlight the data in a different way while still being easy to understand and pleasing to look at.
+
+```{r}
+brainstroke %>%
+   ggplot(aes(x = state, y = score)) +
+   geom_segment(aes(xend = state, yend = 0), color = "gray60", size = 0.8)+ 
+   geom_point(size = 4, color = "red") +
+   labs(title = "Percentage of People that Recieved Stroke Results in <45 Mins", y = "Percentage (%)", x = NULL) +
+   theme_minimal()+
+     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+There are a couple of takeaways from this graph. The first takeaway is that it is encouraging that most states are around 75% in getting results back to potential brain stroke patients in 45 minutes or less. The other takeaway that I had is that the Northeast is very concerning with their numbers. Washington DC is at below 30%, while New Jersey is right above 40%, and Vermont is around 45%
+
+# Analysis
+
+So what can we take away from these results? There are a couple more tests that I need to run to get a conclusive final answer to my question "are states slow in just one area of the emergency room or are they slow all around?" I need to run a correlation test and then a regression test on the ER wait times and the brain stroke results. This analysis will allow me to see the relation between these and come to a conclusion afterwards on whether or not long average wait times in the ER correlate to not receiving brain scan results in an adequate amount of time and whether or not patients should feel safe about having to get such important results in states where ER wait times are slower than normal.
+
+```{r}
+
+#1st test
+#Combining average ER wait time so that cor.test can run as the two datasets did not have the same length
+careertidy <- care_state_er %>% 
+  group_by(state) %>% 
+  summarise(score = mean(score, na.rm = TRUE))
+view(careertidy)
+##running cor.test
+cor.test(careertidy$score, brainstroke$score)
+```
+
+```{r}
+ggplot(data = NULL, aes(x = careertidy$score, y = brainstroke$score)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(
+    x = "Career Score",
+    y = "Brain Stroke Score",
+    title = "Correlation Between Career Score and Brain Stroke Score"
+  ) +
+  theme_minimal()
+```
+
+After running this correlation test between the percentage of Brain stroke patients that received their results within 45 minutes and the average ER wait time, we got a correlation score of -0.35 rounded. This represents a mild negative correlation, meaning that as the average wait time of the ER goes up, the average percentage of patients receiving decreases. This is what I expected to happen, so I will run a regression test to see just how much these two variables are correlated to each other. This will give a clearer idea of just how much they are affected by one another and give me a time to present and not just a number.
+
+```{r}
+model1 <- lm(brainstroke$score ~ careertidy$score)
+summary(model1)
+```
+
+After analyzing the data above, we can see a significant negative relation between the two variables. Looking at the slope, which is 0.069, this means that for every extra minute that the ER takes to help patients, about 0.069% of brain patients do not receive results in an adequate amount of time. This meant that for every 15 minutes 1% of patients are not receiving their potential brain stroke results within 45 minutes. That is a significant number of patients and is a concerning correlation between the two.
+
+For the final visual of my analysis I am going to bring down one of the graphs that was shown earlier and compare it to a new graph that I will create. This graph comes from graph 1 and is the US Map color-coded to the average ER wait time.
+
+```{r}
+care_state_er %>% 
+  filter(str_starts(measure_name, "Average")) %>% 
+  filter(state != "PR") %>% ##filtering out Puerto Rico
+  group_by(state) %>% 
+  summarise(avg_wait = mean(score, na.rm = TRUE), .groups = "drop") %>% 
+  mutate(region = tolower(state.name[match(state, state.abb)])) %>% ##making all of the abbreviations of the states the same so that the graph can be produced
+  right_join(map_data("state"), by = "region") %>%
+  ggplot(aes(long, lat, group = group, fill = avg_wait)) +
+  geom_polygon(color = "white", size = 0.3) +
+  coord_fixed(1.3) +
+  scale_fill_viridis_c(option = "plasma", name = "Average ER Wait Time (mins)") + ##looked online at color palates to find the one that I felt looked best for the graph
+  labs(title = "Average ER Wait Time by State",
+       x = NULL, 
+       y = NULL) +
+  theme_minimal()
+```
+
+I will now compare this to a new graph of a US Map, but instead of ER wait times it will be with the brain stroke data.
+
+```{r}
+brainstroke %>% 
+  filter(state != "PR") %>% 
+  group_by(state) %>% 
+  summarise(brain_score = mean(score, na.rm = TRUE), .groups = "drop") %>% 
+  mutate(region = tolower(state.name[match(state, state.abb)])) %>% 
+  right_join(map_data("state"), by = "region") %>%
+  ggplot(aes(long, lat, group = group, fill = brain_score)) +
+  geom_polygon(color = "white", size = 0.3) +
+  coord_fixed(1.3) +
+  scale_fill_viridis_c(option = "plasma", name = "Brain Stroke Score") +
+  labs(title = "Brain Stroke Score by State",
+       caption = "*Note: Washington DC is not displayed on the map but was at 26%",
+       x = NULL, 
+       y = NULL) +
+  theme_minimal()
+```
+
+After looking at this, we can see that some of the same characteristics of the ER wait times are there for the brain stroke scores. The Northeast has some of the same issues with long wait times and low percentages of patients receiving results, as does New Mexico. In the following conclusion section I will dive deeper into what results this has created for me, but I wanted to make sure that these visuals of the US map were shown because I have found that they make the data easiest to understand.
+
+# Conclusion
+
+In conclusion, there is quite a slow response time in emergency rooms for any state, but the Northeast seems to struggle the most. This shows in all of the results, from having lower than usual brain stroke results within 45 minutes, having lower amounts of Covid vaccinations, and having a longer wait time for seeing a mental health professional in the ER. The analysis section brought this to light even more with the introduction of another map graph showing that the same states that are in lighter colors on the first graph (longer wait time) are in darker colors (lower percentage) on the second graph. This along with all of the other graphs introduced in the exploratory data analysis as well as the comments that have been made under each graph throughout have all been in an effort to show that there are relations to states that have longer ER wait times are slower in all facets of the emergency room, and they are not just lacking in one area. This is a concerning discovery, and hopefully there are more efforts made to these states that are lacking, but until then we have to work with what we are given.
+
+# Sources
+
+Data from : <https://github.com/rfordatascience/tidytuesday/blob/main/data/2025/2025-04-08/readme.md>
+
+Inspiration for correlation and regression tests: <https://statsandr.com/blog/correlation-coefficient-and-correlation-test-in-r/>
+
+Ggplot cheat sheet: <https://posit.co/wp-content/uploads/2022/10/data-visualization-1.pdf>
